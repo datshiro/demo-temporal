@@ -1,6 +1,7 @@
 package main
 
 import (
+	"app/shared"
 	"app/worker/activity"
 	"log"
 
@@ -14,9 +15,8 @@ func main() {
 		log.Fatalln("Unable to create Temporal client.", err)
 	}
 	defer c.Close()
-	queueName := "export-segment"
 
-	w := worker.New(c, queueName, worker.Options{})
+	w := worker.New(c, shared.QueueName, worker.Options{})
 
 	// This worker hosts both Workflow and Activity functions.
 	w.RegisterActivity(activity.RefreshSegment)

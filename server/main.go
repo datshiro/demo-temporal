@@ -32,7 +32,12 @@ func main() {
 		input.SegmentID,
 	)
 
-	we, err := c.ExecuteWorkflow(context.Background(), options, "SubmitSegmentWorkflow", input)
+	we, err := c.ExecuteWorkflow(
+		context.Background(),
+		options,
+		"SubmitSegmentWorkflow",
+		input,
+	)
 	if err != nil {
 		log.Fatalln("Unable to start the Workflow:", err)
 	}

@@ -18,11 +18,10 @@ func main() {
 		log.Fatalln("Unable to create Temporal client.", err)
 	}
 	defer c.Close()
-	queueName := "export-segment"
 
-	w := worker.New(c, queueName, worker.Options{})
+	w := worker.New(c, shared.QueueName, worker.Options{})
 
-	// This worker hosts both Workflow and Activity functions.
+	// This worker hosts  Workflow functions.
 	w.RegisterWorkflow(SubmitSegmentWorkflow)
 
 	// Start listening to the Task Queue.
@@ -32,7 +31,10 @@ func main() {
 	}
 }
 
-func SubmitSegmentWorkflow(ctx workflow.Context, input shared.RequestDetails) (string, error) {
+func SubmitSegmentWorkflow(
+	ctx workflow.Context,
+	input shared.RequestDetails,
+) (string, error) {
 	retrypolicy := &temporal.RetryPolicy{
 		InitialInterval:        time.Second,
 		BackoffCoefficient:     2.0,
@@ -48,17 +50,23 @@ func SubmitSegmentWorkflow(ctx workflow.Context, input shared.RequestDetails) (s
 		// Temporal retries failed Activities by default.
 		RetryPolicy: retrypolicy,
 	}
+	notifyCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: time.Minute,
+		TaskQueue:           shared.NotificationQueueName,
+	})
 
 	// Apply the options.
-	ctx = workflow.WithActivityOptions(ctx, options)
+	pastSegmentCtx := workflow.WithActivityOptions(ctx, options)
 	var segmentOutput string
 
-	segmentErr := workflow.ExecuteActivity(ctx, "RefreshSegment", input).Get(ctx, &segmentOutput)
+	segmentErr := workflow.ExecuteActivity(pastSegmentCtx, "RefreshSegment", input).
+		Get(pastSegmentCtx, &segmentOutput)
 
 	if segmentErr != nil {
 		return "", segmentErr
 	}
-	segmentErr = workflow.ExecuteActivity(ctx, "ConvertSegment", input).Get(ctx, &segmentOutput)
+	segmentErr = workflow.ExecuteActivity(pastSegmentCtx, "ConvertSegment", input).
+		Get(pastSegmentCtx, &segmentOutput)
 
 	if segmentErr != nil {
 		return "", segmentErr
@@ -66,13 +74,15 @@ func SubmitSegmentWorkflow(ctx workflow.Context, input shared.RequestDetails) (s
 
 	var result string
 
-	err := workflow.ExecuteActivity(ctx, "ExportSegment", input).Get(ctx, &result)
+	err := workflow.ExecuteActivity(pastSegmentCtx, "ExportSegment", input).
+		Get(pastSegmentCtx, &result)
 	if err != nil {
 		return "", err
 	}
 	log.Printf("Submit Segment complete: %s", result)
 
-	err = workflow.ExecuteActivity(ctx, "SendNotification", input).Get(ctx, &result)
+	err = workflow.ExecuteActivity(notifyCtx, "SendNotification", input).
+		Get(pastSegmentCtx, &result)
 	if err != nil {
 		return "", err
 	}

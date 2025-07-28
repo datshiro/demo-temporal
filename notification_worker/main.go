@@ -17,9 +17,8 @@ func main() {
 		log.Fatalln("Unable to create Temporal client.", err)
 	}
 	defer c.Close()
-	queueName := "export-segment"
 
-	w := worker.New(c, queueName, worker.Options{})
+	w := worker.New(c, shared.NotificationQueueName, worker.Options{})
 
 	// This worker hosts both Workflow and Activity functions.
 	w.RegisterActivity(SendNotification)
@@ -34,7 +33,7 @@ func main() {
 func SendNotification(ctx context.Context, data shared.RequestDetails) (string, error) {
 	log.Printf("Sending notification for segment %d", data.SegmentID)
 	isError := rand.Intn(2)
-	if isError == 1 {
+	if isError%2 == 0 {
 		return "", errors.New("notification failed")
 	}
 	return "Notification sent", nil
